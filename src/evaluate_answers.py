@@ -155,16 +155,18 @@ class AnswerParser:
         question_text = q_match.group(2).strip()
 
         # Extract answer without protocol
+        # Pattern: ### A1-NP: Answer without protocol:\n[content]\n---\n### A1-WP:
         anp_match = re.search(
-            r'### A\d+-NP:.*?\n---\n(.*?)(?=\n---\n### A\d+-WP:|$)',
+            r'### A\d+-NP:[^\n]*\n\n(.*?)(?=\n---\n### A\d+-WP:|$)',
             section,
             re.DOTALL
         )
         answer_np = anp_match.group(1).strip() if anp_match else ""
 
         # Extract answer with protocol
+        # Pattern: ### A1-WP: Answer with protocol:\n[content]
         awp_match = re.search(
-            r'### A\d+-WP:.*?\n(.*?)(?=\n\n## \d+\.|$)',
+            r'### A\d+-WP:[^\n]*\n\n(.*?)(?=\n\n## \d+\.|$)',
             section,
             re.DOTALL
         )
