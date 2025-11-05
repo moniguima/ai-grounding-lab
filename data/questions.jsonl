@@ -1,0 +1,7 @@
+# data/questions.jsonl
+
+{"qid":"Q1","domain":"cog_sci","prompt":"How does cognitive load theory inform the design of online learning platforms?"}
+{"qid":"Q2","domain":"ml_factuality","prompt":"What techniques improve factual accuracy in large language models?"}
+{"qid":"Q3","domain":"hci","prompt":"What are the cognitive risks of over-reliance on AI assistants in workplace decision-making?"}
+{"qid":"Q4","domain":"health_tech","prompt":"Can generative AI be safely used to support clinical decision-making?"}
+{"qid":"Q5","domain":"policy_eu","prompt":"What are the current research-based best practices for regulating AI systems in the EU?"}
