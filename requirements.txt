@@ -1,0 +1,8 @@
+# AI Grounding Lab - Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# OpenAI SDK for LM Studio API compatibility
+openai>=1.0.0
+
+# HTTP requests for external evaluation APIs
+requests>=2.31.0
