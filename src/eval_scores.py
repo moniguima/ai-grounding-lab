@@ -1,39 +1,42 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-Created on Sun Oct  5 15:32:44 2025
+Score LLM responses using an external evaluator API.
 
-@author: Monica Guimaraes
+Supports two modes:
+1. Single-answer scoring: Score each response individually against rubric criteria
+2. Pairwise comparison: Compare two responses (with/without protocol)
+
+Usage Examples:
+
+Single-answer scoring:
+    python3 src/eval_scores.py \
+      --answers runs/raw/2025-10-05_with_proto_llama3.jsonl \
+      --out runs/evals/2025-10-05_with_proto_llama3.eval.jsonl \
+      --rubric protocol/evaluation_scoring_rubric.md \
+      --eval-endpoint https://api.openai.com/v1/chat/completions \
+      --eval-model gpt-4o-mini
+
+Pairwise scoring:
+    python3 src/eval_scores.py \
+      --answers runs/raw/2025-10-05_without_proto_llama3.jsonl \
+      --answers-b runs/raw/2025-10-05_with_proto_llama3.jsonl \
+      --out runs/evals/2025-10-05_pairwise_llama3.eval.jsonl \
+      --rubric protocol/evaluation_scoring_rubric.md \
+      --pairwise \
+      --eval-endpoint https://api.openai.com/v1/chat/completions \
+      --eval-model gpt-4o-mini
+
+Author: Monica Guimaraes
+Created: 2025-10-05
 """
 
-"""
-How to use
-Single-answer scoring (per row):
-
-python3 src/eval_scores.py \
-  --answers runs/raw/2025-10-05_with_proto_llama3.jsonl \
-  --out runs/evals/2025-10-05_with_proto_llama3.eval.jsonl \
-  --rubric docs/evaluation_scoring_rubric.md \
-  --eval-endpoint https://api.openai.com/v1/chat/completions \
-  --eval-model gpt-4o-mini
-
-Pairwise scoring (A vs. B):
-    
-# Example: A = without_protocol, B = with_protocol (in separate files)
-python3 src/eval_scores.py \
-  --answers runs/raw/2025-10-05_without_proto_llama3.jsonl \
-  --answers-b runs/raw/2025-10-05_with_proto_llama3.jsonl \
-  --out runs/evals/2025-10-05_pairwise_llama3.eval.jsonl \
-  --rubric docs/evaluation_scoring_rubric.md \
-  --pairwise \
-  --eval-endpoint https://api.openai.com/v1/chat/completions \
-  --eval-model gpt-4o-mini
-
-"""
-
-
-#!/usr/bin/env python3
-import argparse, json, os, pathlib, requests, hashlib, re
+import argparse
+import hashlib
+import json
+import os
+import pathlib
+import re
+import requests
 
 EVAL_HEADER = """You are an expert evaluator. Use the rubric below to score the model’s answer.
 Return STRICT JSON only (no prose), with the keys and numeric ranges indicated.

@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Sun Oct  5 15:38:07 2025
-
-@author: Monica Guimaraes
-"""
-#!/usr/bin/env python3
 """
 Run prompts through a local LM Studio server using the OpenAI-compatible SDK.
 Generates a JSONL file with responses for downstream evaluation.
+
+Author: Monica Guimaraes
+Created: 2025-10-05
 """
 
-import argparse, json, os, pathlib, time, datetime
+import argparse
+import datetime
+import json
+import os
+import pathlib
+import time
 from openai import OpenAI
 
 def iter_prompts(path):

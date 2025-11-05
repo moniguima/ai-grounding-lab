@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-Created on Sun Oct  5 15:37:23 2025
+Aggregate evaluation results and compute summary statistics.
 
-@author: Monica Guimaraes
+Reads JSONL evaluation files and groups results by specified keys
+(model, qid, condition, etc.), computing mean and standard deviation
+for each scoring criterion.
+
+Author: Monica Guimaraes
+Created: 2025-10-05
 """
 
-#!/usr/bin/env python3
-import argparse, json, os, glob, statistics as stats
+import argparse
+import glob
+import json
+import os
+import statistics as stats
 from collections import defaultdict
 
 def load_evals(path_or_dir):
