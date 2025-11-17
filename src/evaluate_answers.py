@@ -2,11 +2,12 @@
 """
 Automate AI evaluation of answers using criterion-specific prompts.
 
-This script evaluates answers from questions_and_answers.md using detailed
+This script evaluates answers from data/answers.jsonl using detailed
 evaluation prompts from docs/prompts/ and an external AI evaluator API.
 
 Author: Monica Guimaraes
 Created: 2025-11-05
+Updated: 2025-11-17 - Refactored to use JSONL input files
 """
 
 import argparse
@@ -84,23 +85,23 @@ class PromptLoader:
 
 class AnswerParser:
     """
-    Parses answers from questions_and_answers.md file.
+    Parses answers from JSONL file.
 
     Follows Single Responsibility Principle: only handles answer extraction.
     """
 
-    def __init__(self, qa_file: Path):
+    def __init__(self, answers_file: Path):
         """
-        Initialize with path to questions and answers file.
+        Initialize with path to answers JSONL file.
 
         Args:
-            qa_file: Path to questions_and_answers.md file.
+            answers_file: Path to answers.jsonl file.
         """
-        self.qa_file = qa_file
+        self.answers_file = answers_file
 
     def parse_answers(self) -> List[Dict[str, str]]:
         """
-        Parse all question-answer pairs from the file.
+        Parse all question-answer pairs from the JSONL file.
 
         Returns:
             List of dictionaries containing:
@@ -109,75 +110,34 @@ class AnswerParser:
                 - answer_without_protocol: Answer text
                 - answer_with_protocol: Answer text
         """
-        with open(self.qa_file, "r", encoding="utf-8") as f:
-            content = f.read()
-
-        # Split by main sections (## 1., ## 2., etc.)
-        # Handle first section specially since it starts with ## without newline
-        if content.startswith("## "):
-            content = "\n" + content
-
-        sections = re.split(r'\n(## \d+\.)', content)
-
-        # Reconstruct sections by pairing headers with content
-        # sections will be: ['before_content', '## 1.', 'content1', '## 2.', 'content2', ...]
-        reconstructed = []
-        for i in range(1, len(sections), 2):
-            if i + 1 < len(sections):
-                reconstructed.append(sections[i] + sections[i + 1])
-            else:
-                reconstructed.append(sections[i])
-
         answers = []
-        for section in reconstructed:
-            qa_pair = self._parse_section(section)
-            if qa_pair:
-                answers.append(qa_pair)
+
+        with open(self.answers_file, "r", encoding="utf-8") as f:
+            for line_num, line in enumerate(f, start=1):
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+
+                try:
+                    data = json.loads(line)
+                    answers.append({
+                        "question_id": data["question_id"],
+                        "question_text": data["question"],
+                        "answer_without_protocol": data["answer_without_protocol"],
+                        "answer_with_protocol": data["answer_with_protocol"]
+                    })
+                except json.JSONDecodeError as e:
+                    raise json.JSONDecodeError(
+                        f"Invalid JSON on line {line_num}",
+                        e.doc,
+                        e.pos
+                    )
+                except KeyError as e:
+                    raise KeyError(
+                        f"Missing required field {e} on line {line_num}"
+                    )
 
         return answers
-
-    def _parse_section(self, section: str) -> Optional[Dict[str, str]]:
-        """
-        Parse a single section containing Q&A.
-
-        Args:
-            section: Text of one section.
-
-        Returns:
-            Dictionary with question and answers, or None if parsing fails.
-        """
-        # Extract question ID and text
-        q_match = re.search(r'### (Q\d+):\s*(.+?)(?=\n---|\n###)', section, re.DOTALL)
-        if not q_match:
-            return None
-
-        question_id = q_match.group(1)
-        question_text = q_match.group(2).strip()
-
-        # Extract answer without protocol
-        # Pattern: ### A1-NP: Answer without protocol:\n[content]\n---\n### A1-WP:
-        anp_match = re.search(
-            r'### A\d+-NP:[^\n]*\n\n(.*?)(?=\n---\n### A\d+-WP:|$)',
-            section,
-            re.DOTALL
-        )
-        answer_np = anp_match.group(1).strip() if anp_match else ""
-
-        # Extract answer with protocol
-        # Pattern: ### A1-WP: Answer with protocol:\n[content]
-        awp_match = re.search(
-            r'### A\d+-WP:[^\n]*\n\n(.*?)(?=\n\n## \d+\.|$)',
-            section,
-            re.DOTALL
-        )
-        answer_wp = awp_match.group(1).strip() if awp_match else ""
-
-        return {
-            "question_id": question_id,
-            "question_text": question_text,
-            "answer_without_protocol": answer_np,
-            "answer_with_protocol": answer_wp
-        }
 
 
 class EvaluationComposer:
@@ -394,10 +354,10 @@ def main() -> None:
         description="Automate AI evaluation of answers using criterion-specific prompts"
     )
     parser.add_argument(
-        "--qa-file",
+        "--answers-file",
         type=Path,
-        default=Path("docs/questions_and_answers.md"),
-        help="Path to questions and answers file"
+        default=Path("data/answers.jsonl"),
+        help="Path to answers JSONL file (with protocol and non-protocol answers)"
     )
     parser.add_argument(
         "--prompts-dir",
@@ -453,7 +413,7 @@ def main() -> None:
 
     # Initialize components
     prompt_loader = PromptLoader(args.prompts_dir)
-    answer_parser = AnswerParser(args.qa_file)
+    answer_parser = AnswerParser(args.answers_file)
     composer = EvaluationComposer()
     api_client = APIClient(
         endpoint=args.evaluator_endpoint,
@@ -464,7 +424,7 @@ def main() -> None:
     score_extractor = ScoreExtractor()
 
     # Load answers
-    print(f"Loading answers from {args.qa_file}...")
+    print(f"Loading answers from {args.answers_file}...")
     answers = answer_parser.parse_answers()
     print(f"Found {len(answers)} question-answer pairs")
 
