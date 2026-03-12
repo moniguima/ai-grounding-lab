@@ -60,7 +60,7 @@ python3 src/generate_evaluation_forms.py \
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--qa-file` | Questions and answers file | `docs/questions_and_answers.md` |
-| `--rubrics-dir` | Directory with rubrics | `docs/rubrics` |
+| `--rubrics-dir` | Directory with rubrics | `docs/human_rubrics` |
 | `--output-dir` | Where to save forms | `evaluations/human/forms` |
 | `--criterion` | Specific criterion or `all` | `all` |
 | `--condition` | `with-protocol`, `without-protocol`, or `both` | `both` |
@@ -268,7 +268,7 @@ print(f"Inter-rater correlation: {correlation:.3f} (p={p_value:.3f})")
 
 ### Before Starting
 
-- [ ] Read all rubrics in `docs/rubrics/`
+- [ ] Read all rubrics in `docs/human_rubrics/`
 - [ ] Practice on 1-2 sample forms
 - [ ] Calibrate with another rater (if doing inter-rater study)
 - [ ] Set up comfortable evaluation environment
@@ -317,7 +317,7 @@ Note your concern in the form but apply the rubric as written to maintain consis
 
 ### Q: Can I modify the rubrics?
 
-Yes, but do it BEFORE generating forms. Edit files in `docs/rubrics/`, then regenerate all forms.
+Yes, but do it BEFORE generating forms. Edit files in `docs/human_rubrics/`, then regenerate all forms.
 
 ### Q: How do I evaluate if I'm not a domain expert?
 

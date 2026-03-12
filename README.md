@@ -12,7 +12,10 @@ A reproducible, open-source framework for testing how a **Scientific Grounding P
 - **Questions:** `data/questions.jsonl` – canonical test prompts (Q1–Q5) across domains
 - **Prompt composer:** `src/compose_prompts.py` – builds with/without protocol prompts
 - **Runner:** `src/run_lm_studio.py` – queries local LM Studio (OpenAI-compatible API)
-- **Evaluator:** `src/eval_scores.py` – scores answers with rubric using an external model (Claude/GPT)
+- **AI Evaluator:** `src/eval_scores.py` – scores answers using a rubric and an external model (Claude/GPT)
+- **Criterion Evaluator:** `src/evaluate_answers.py` – AI evaluation using criterion-specific prompts
+- **Human Forms Generator:** `src/generate_evaluation_forms.py` – creates pre-filled forms for human raters
+- **Human Score Collector:** `src/collect_human_scores.py` – extracts scores from completed human forms
 - **Aggregator:** `src/aggregate.py` – merges scores, prints summary stats
 
 ## Repository Structure
@@ -25,22 +28,26 @@ ai-grounding-lab/
 ├── requirements.txt
 ├── protocol/
 │   ├── SGP_compact.md              # Compact protocol for any model
-│   ├── evaluation_scoring_rubric.md
-│   └── scientific_grounding_protocol.md
+│   └── scientific_grounding_protocol.md  # Full protocol specification
 ├── data/
 │   ├── questions.jsonl             # Test questions (Q1-Q5)
+│   └── answers.jsonl               # Sample answers (with/without protocol)
 ├── docs/
-│   └── prompts/                    # AI Prompts to evaluate resultscompose_prompts.py
-│   └── rubrics/                    # Human rubrics to evaluate results
+│   ├── AI_prompts/                 # Criterion-specific AI evaluation prompts
+│   ├── human_rubrics/              # Rubrics for human evaluators
+│   ├── EVALUATION_GUIDE.md         # Guide for automated AI evaluation
+│   └── HUMAN_EVALUATION_GUIDE.md   # Guide for human validation
 ├── runs/
 │   ├── raw/                        # Model responses (JSONL)
 │   └── evals/                      # Evaluation scores (JSONL)
-├── src/
-│   ├── compose_prompts.py          # Generate prompt variants
-│   ├── run_lm_studio.py            # Run model inference
-│   ├── eval_scores.py              # Score responses
-│   └── aggregate.py                # Aggregate results
-└── docs/                           # Additional documentation
+└── src/
+    ├── compose_prompts.py          # Generate prompt variants
+    ├── run_lm_studio.py            # Run model inference
+    ├── eval_scores.py              # Score responses (automated)
+    ├── evaluate_answers.py         # AI evaluation with criterion prompts
+    ├── generate_evaluation_forms.py # Generate human evaluation forms
+    ├── collect_human_scores.py     # Collect human evaluation scores
+    └── aggregate.py                # Aggregate and compare results
 ```
 
 ## Installation
@@ -151,6 +158,33 @@ python3 src/eval_scores.py \
   --eval-model gpt-4o-mini
 ```
 
+## Human Validation Workflow
+
+Human evaluation validates AI scores and provides an inter-rater reliability check. See [`docs/HUMAN_EVALUATION_GUIDE.md`](docs/HUMAN_EVALUATION_GUIDE.md) for full details.
+
+**Step 1: Generate evaluation forms**
+```bash
+python3 src/generate_evaluation_forms.py \
+  --output-dir evaluations/human/forms \
+  --evaluator-name "YourName"
+```
+This creates 50 forms (5 questions × 2 conditions × 5 criteria).
+
+**Step 2: Complete forms**
+
+Open forms in any markdown editor and fill in scores following the rubrics in `docs/human_rubrics/`.
+
+**Step 3: Collect scores**
+```bash
+python3 src/collect_human_scores.py \
+  --forms-dir evaluations/human/forms \
+  --output-dir evaluations/human
+```
+
+**Step 4: Compare with AI scores**
+
+Compare `evaluations/human/human_scores.jsonl` against `runs/evals/` to calculate inter-rater agreement between human and AI evaluations.
+
 ## Evaluation Criteria
 
 Responses are scored on five dimensions (0-5 scale each):
@@ -161,7 +195,7 @@ Responses are scored on five dimensions (0-5 scale each):
 4. **Actionability** – Concrete, context-aware recommendations
 5. **Uncertainty Disclosure** – Confidence levels, research gaps, unknowns
 
-See `protocol/evaluation_scoring_rubric.md` for detailed scoring criteria.
+See `docs/human_rubrics/` for detailed scoring criteria per dimension.
 
 ## Configuration Options
 

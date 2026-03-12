@@ -4,7 +4,7 @@ This guide explains how to use the `evaluate_answers.py` script to automatically
 
 ## Overview
 
-The script evaluates answers from `docs/questions_and_answers.md` using the detailed evaluation prompts in `docs/prompts/` and an external AI API (Claude or GPT).
+The script evaluates answers from `docs/questions_and_answers.md` using the detailed evaluation prompts in `docs/AI_prompts/` and an external AI API (Claude or GPT).
 
 ## Prerequisites
 
@@ -58,7 +58,7 @@ python3 src/evaluate_answers.py \
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--qa-file` | Path to questions and answers file | `docs/questions_and_answers.md` |
-| `--prompts-dir` | Directory with evaluation prompts | `docs/prompts` |
+| `--prompts-dir` | Directory with evaluation prompts | `docs/AI_prompts` |
 | `--output-dir` | Output directory for results | `evaluations/ai` |
 | `--criterion` | Which criterion to evaluate | `all` |
 | `--evaluator-endpoint` | API endpoint URL | *Required* |
@@ -226,7 +226,7 @@ python3 src/evaluate_answers.py \
 After AI evaluation:
 1. Review the detailed evaluation texts in the JSONL files
 2. Use the scores to populate your paper tables
-3. Compare with human evaluation scores (from rubrics in `docs/rubrics/`)
+3. Compare with human evaluation scores (from rubrics in `docs/human_rubrics/`)
 4. Calculate inter-rater reliability (AI vs. human)
 
 ## Support
