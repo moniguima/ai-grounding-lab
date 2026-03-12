@@ -5,6 +5,9 @@ A reproducible, open-source framework for testing how a **Scientific Grounding P
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Status: In Development](https://img.shields.io/badge/status-in%20development-orange.svg)]()
+
+> **Note:** This project is actively under development. Features and documentation may change.
 
 ## What's Inside
 
