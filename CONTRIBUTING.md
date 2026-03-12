@@ -290,7 +290,7 @@ if line.startswith("#"):
 
 - **Open an issue**: For bugs, feature requests, or questions
 - **Discussions**: For broader topics or brainstorming
-- **Email maintainer**: monica.guimaraes@example.com (for private inquiries)
+- **LinkedIn**: https://www.linkedin.com/in/moniguima/ (for private inquiries)
 
 ## Recognition
 

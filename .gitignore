@@ -24,6 +24,9 @@ ENV/
 
 # OS files
 .DS_Store
+
+# Internal AI instructions
+CLAUDE.md
 .DS_Store?
 ._*
 .Spotlight-V100
