@@ -21,6 +21,7 @@ A reproducible, open-source framework for testing how a **Scientific Grounding P
 ai-grounding-lab/
 ├── README.md
 ├── LICENSE (MIT)
+├── CONTRIBUTING.md
 ├── requirements.txt
 ├── protocol/
 │   ├── SGP_compact.md              # Compact protocol for any model
@@ -28,8 +29,8 @@ ai-grounding-lab/
 │   └── scientific_grounding_protocol.md
 ├── data/
 │   ├── questions.jsonl             # Test questions (Q1-Q5)
-│   └── prompts/                    # AI Prompts to evaluate resultscompose_prompts.py
 ├── docs/
+│   └── prompts/                    # AI Prompts to evaluate resultscompose_prompts.py
 │   └── rubrics/                    # Human rubrics to evaluate results
 ├── runs/
 │   ├── raw/                        # Model responses (JSONL)
