@@ -1,0 +1,53 @@
+# Colang 1.0 rail flows for AI Grounding Lab — Condition C (with-guardrails)
+#
+# INPUT RAIL
+# ----------
+# check domain relevance
+#   Calls the Python action `check_domain_relevance`, which matches the user
+#   message against vocabulary for the five supported research domains:
+#   cog_sci | ml_factuality | hci | health_tech | policy_eu
+#   If the question is out of scope, returns the sentinel message below and
+#   halts further processing. None of the five canonical lab questions should
+#   trigger this rail; it is a safety boundary for open-ended use.
+#
+# OUTPUT RAIL
+# -----------
+# check sgp compliance
+#   Calls the Python action `check_sgp_compliance`, which applies three
+#   deterministic keyword/regex checks to the model response:
+#     1. Evidence   — response must reference research, studies, or findings
+#     2. Uncertainty — response must disclose limitations or hedge claims
+#     3. Transparency — response must not contain unqualified absolute claims
+#   If any check fails, returns the sentinel message below. The sentinel
+#   string "[SGP_RAIL_TRIGGERED]" is detected by GuardrailsRunner._build_trace
+#   to populate the guardrails_trace field in the output JSONL.
+
+# ---------------------------------------------------------------------------
+# INPUT RAIL: Domain Boundary Enforcement
+# ---------------------------------------------------------------------------
+
+define flow check domain relevance
+  $in_domain = execute check_domain_relevance
+  if not $in_domain
+    bot inform out of domain
+    stop
+
+define bot inform out of domain
+  "This question is outside the AI Grounding Lab's supported research domains \
+(cognitive science, ML factuality, HCI, health technology, EU AI policy). \
+Please ask a question within one of these research areas."
+
+# ---------------------------------------------------------------------------
+# OUTPUT RAIL: SGP Compliance Enforcement
+# ---------------------------------------------------------------------------
+
+define flow check sgp compliance
+  $compliant = execute check_sgp_compliance
+  if not $compliant
+    bot inform sgp violation
+    stop
+
+define bot inform sgp violation
+  "[SGP_RAIL_TRIGGERED] The model response did not satisfy one or more \
+Scientific Grounding Protocol requirements: (1) cite peer-reviewed evidence, \
+(2) disclose uncertainty and limitations, (3) avoid unqualified absolute claims."

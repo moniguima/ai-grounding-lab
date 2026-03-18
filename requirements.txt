@@ -6,3 +6,6 @@ openai>=1.0.0
 
 # HTTP requests for external evaluation APIs
 requests>=2.31.0
+
+# NeMo Guardrails for programmatic SGP enforcement (Condition C)
+nemoguardrails>=0.9.0

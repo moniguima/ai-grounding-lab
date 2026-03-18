@@ -1,0 +1,39 @@
+# NeMo Guardrails configuration for the AI Grounding Lab (Condition C: with-guardrails)
+#
+# This config wires the SGP constraints as runtime rails rather than prompt text.
+# The model name and endpoint are patched at runtime by run_with_guardrails.py,
+# so values here serve only as documentation-level defaults.
+#
+# Rails applied:
+#   Input  : check domain relevance  — blocks out-of-scope questions
+#   Output : check sgp compliance    — blocks responses that lack evidence,
+#                                      uncertainty disclosure, or transparency
+
+colang_version: "1.0"
+
+models:
+  - type: main
+    engine: openai
+    model: "llama-3.1-8b"          # overridden by --model CLI argument
+    parameters:
+      base_url: "http://localhost:1234/v1"   # overridden by --base-url CLI argument
+      openai_api_base: "http://localhost:1234/v1"
+      openai_api_key: "not-needed"
+      temperature: 0.2
+      max_tokens: 1024
+
+instructions:
+  - type: general
+    content: |
+      You are a research assistant specialising in cognitive science, machine learning
+      factuality, human-computer interaction, health technology, and EU AI policy.
+      Ground every answer in peer-reviewed research. Label evidence strength as
+      ESTABLISHED, EMERGING, or SPECULATIVE. Acknowledge limitations and uncertainty.
+
+rails:
+  input:
+    flows:
+      - check domain relevance
+  output:
+    flows:
+      - check sgp compliance

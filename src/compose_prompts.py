@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
-Compose prompt variants from questions with and without the Scientific Grounding Protocol.
+Compose prompt variants from questions across all three experimental conditions.
 
-This module creates two JSONL files:
-- with_protocol.jsonl: Questions wrapped with the SGP instructions
-- without_protocol.jsonl: Baseline questions without protocol wrapper
+This module creates up to three JSONL files:
+- without_protocol.jsonl : Baseline questions (no protocol wrapper)
+- with_protocol.jsonl    : Questions wrapped with SGP text (Condition B)
+- with_guardrails.jsonl  : Plain questions routed through NeMo Guardrails
+                           (Condition C — SGP enforced at runtime, not in prompt)
 
 Author: Monica Guimaraes
 """
@@ -53,6 +55,24 @@ class PromptComposer:
     def compose_without_protocol(self, question: str) -> str:
         """
         Compose a prompt without any protocol wrapper.
+
+        Args:
+            question: The question text.
+
+        Returns:
+            The question as-is.
+        """
+        return question
+
+    def compose_with_guardrails(self, question: str) -> str:
+        """
+        Compose a prompt for the NeMo Guardrails condition (Condition C).
+
+        The question is passed through unchanged. SGP constraints are enforced
+        at runtime by the guardrails layer (guardrails/rails.co + actions.py)
+        rather than embedded as prompt text. This isolates the architectural
+        effect of programmatic enforcement from the effect of in-context
+        instructions used in the with-protocol condition.
 
         Args:
             question: The question text.
@@ -162,7 +182,8 @@ class PromptWriter:
 def compose_all_prompts(
     questions_path: Path,
     protocol_path: Optional[Path],
-    output_dir: Path
+    output_dir: Path,
+    include_guardrails: bool = False,
 ) -> None:
     """
     Main orchestration function to compose all prompt variants.
@@ -174,6 +195,7 @@ def compose_all_prompts(
         questions_path: Path to the questions JSONL file.
         protocol_path: Path to the protocol markdown file (None for without-protocol only).
         output_dir: Directory where output files will be written.
+        include_guardrails: If True, also emit with_guardrails.jsonl (Condition C).
     """
     # Load questions
     loader = QuestionLoader()
@@ -182,6 +204,7 @@ def compose_all_prompts(
     # Prepare output lists
     with_protocol_prompts: List[Dict[str, str]] = []
     without_protocol_prompts: List[Dict[str, str]] = []
+    with_guardrails_prompts: List[Dict[str, str]] = []
 
     # Load protocol if provided
     protocol_text = None
@@ -215,6 +238,16 @@ def compose_all_prompts(
             }
             with_protocol_prompts.append(with_prompt)
 
+        # With guardrails variant (Condition C — SGP enforced at runtime)
+        if include_guardrails:
+            guardrails_prompt = {
+                "qid": qid,
+                "condition": "with-guardrails",
+                "wrapper": "NeMo_SGP",
+                "prompt_text": composer.compose_with_guardrails(base_prompt)
+            }
+            with_guardrails_prompts.append(guardrails_prompt)
+
     # Write outputs
     writer = PromptWriter()
     writer.write_prompts(
@@ -229,6 +262,13 @@ def compose_all_prompts(
             output_dir / "with_protocol.jsonl"
         )
         print(f"✓ Wrote {len(with_protocol_prompts)} with-protocol prompts")
+
+    if with_guardrails_prompts:
+        writer.write_prompts(
+            with_guardrails_prompts,
+            output_dir / "with_guardrails.jsonl"
+        )
+        print(f"✓ Wrote {len(with_guardrails_prompts)} with-guardrails prompts")
 
 
 def main() -> None:
@@ -254,6 +294,12 @@ def main() -> None:
         required=True,
         help="Output directory for generated prompt files"
     )
+    parser.add_argument(
+        "--guardrails",
+        action="store_true",
+        default=False,
+        help="Also emit with_guardrails.jsonl for Condition C (NeMo Guardrails)"
+    )
 
     args = parser.parse_args()
 
@@ -261,7 +307,8 @@ def main() -> None:
         compose_all_prompts(
             questions_path=args.questions,
             protocol_path=args.protocol,
-            output_dir=args.out_dir
+            output_dir=args.out_dir,
+            include_guardrails=args.guardrails,
         )
         print("\n✓ Prompt composition complete!")
     except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:

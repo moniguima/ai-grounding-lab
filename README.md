@@ -13,8 +13,9 @@ A reproducible, open-source framework for testing how a **Scientific Grounding P
 
 - **Protocol:** `protocol/SGP_compact.md` – compact prompt wrapper for models without system role
 - **Questions:** `data/questions.jsonl` – canonical test prompts (Q1–Q5) across domains
-- **Prompt composer:** `src/compose_prompts.py` – builds with/without protocol prompts
+- **Prompt composer:** `src/compose_prompts.py` – builds prompts for all three experimental conditions
 - **Runner:** `src/run_lm_studio.py` – queries local LM Studio (OpenAI-compatible API)
+- **Guardrails Runner:** `src/run_with_guardrails.py` – runs Condition C through NeMo Guardrails (SGP enforced at runtime)
 - **AI Evaluator:** `src/eval_scores.py` – scores answers using a rubric and an external model (Claude/GPT)
 - **Criterion Evaluator:** `src/evaluate_answers.py` – AI evaluation using criterion-specific prompts
 - **Human Forms Generator:** `src/generate_evaluation_forms.py` – creates pre-filled forms for human raters
@@ -40,12 +41,17 @@ ai-grounding-lab/
 │   ├── human_rubrics/              # Rubrics for human evaluators
 │   ├── EVALUATION_GUIDE.md         # Guide for automated AI evaluation
 │   └── HUMAN_EVALUATION_GUIDE.md   # Guide for human validation
+├── guardrails/
+│   ├── config.yml                  # NeMo LLMRails config (model/endpoint patched at runtime)
+│   ├── rails.co                    # Colang flows: domain boundary + SGP compliance rails
+│   └── actions.py                  # Deterministic keyword/regex rail actions
 ├── runs/
 │   ├── raw/                        # Model responses (JSONL)
 │   └── evals/                      # Evaluation scores (JSONL)
 └── src/
-    ├── compose_prompts.py          # Generate prompt variants
-    ├── run_lm_studio.py            # Run model inference
+    ├── compose_prompts.py          # Generate prompt variants (all three conditions)
+    ├── run_lm_studio.py            # Run model inference (Conditions A & B)
+    ├── run_with_guardrails.py      # Run model inference via NeMo Guardrails (Condition C)
     ├── eval_scores.py              # Score responses (automated)
     ├── evaluate_answers.py         # AI evaluation with criterion prompts
     ├── generate_evaluation_forms.py # Generate human evaluation forms
@@ -83,16 +89,17 @@ ai-grounding-lab/
 
 ### Full Workflow Example
 
-Run a complete experiment comparing responses with and without the Scientific Grounding Protocol:
+Run a complete experiment across all three conditions — baseline, in-context protocol, and programmatic guardrails:
 
 **Step 1: Compose prompts**
 ```bash
 python3 src/compose_prompts.py \
   --questions data/questions.jsonl \
   --protocol protocol/SGP_compact.md \
-  --out-dir data/prompts
+  --out-dir data/prompts \
+  --guardrails
 ```
-This creates `with_protocol.jsonl` and `without_protocol.jsonl` in `data/prompts/`.
+This creates three files in `data/prompts/`: `without_protocol.jsonl`, `with_protocol.jsonl`, and `with_guardrails.jsonl`.
 
 **Step 2: Run model inference (without protocol)**
 ```bash
@@ -116,6 +123,18 @@ python3 src/run_lm_studio.py \
   --seed 42
 ```
 
+**Step 3b: Run model inference (with guardrails — Condition C)**
+```bash
+python3 src/run_with_guardrails.py \
+  --model "llama-3.1-8b" \
+  --prompts data/prompts/with_guardrails.jsonl \
+  --out runs/raw/with_guardrails_llama3.jsonl \
+  --temperature 0.2 \
+  --max-tokens 1024 \
+  --seed 42
+```
+NeMo Guardrails enforces SGP constraints programmatically via an input rail (domain boundary check) and an output rail (evidence, uncertainty, and transparency check). The output JSONL includes a `guardrails_trace` field recording which rails, if any, were triggered.
+
 **Step 4: Evaluate responses**
 ```bash
 # Score without-protocol responses
@@ -137,6 +156,17 @@ python3 src/eval_scores.py \
   --eval-model gpt-4o-mini
 ```
 
+**Step 4b: Evaluate guardrails responses**
+```bash
+python3 src/eval_scores.py \
+  --answers runs/raw/with_guardrails_llama3.jsonl \
+  --out runs/evals/with_guardrails_llama3.eval.jsonl \
+  --rubric protocol/evaluation_scoring_rubric.md \
+  --questions data/questions.jsonl \
+  --eval-endpoint https://api.openai.com/v1/chat/completions \
+  --eval-model gpt-4o-mini
+```
+
 **Step 5: Aggregate results**
 ```bash
 python3 src/aggregate.py \
@@ -144,7 +174,7 @@ python3 src/aggregate.py \
   --by condition,qid
 ```
 
-This will output a TSV table showing mean scores by condition (with/without protocol) and question.
+This outputs a TSV table showing mean scores across all three conditions (`without-protocol`, `with-protocol`, `with-guardrails`) and question.
 
 ### Pairwise Comparison Mode
 
@@ -216,13 +246,21 @@ See `docs/human_rubrics/` for detailed scoring criteria per dimension.
 
 ## Research Background
 
-The **Scientific Grounding Protocol (SGP)** is a structured prompt template designed to enhance LLM outputs by:
+The **Scientific Grounding Protocol (SGP)** is a structured set of constraints designed to enhance LLM outputs by:
 - Requiring peer-reviewed evidence with recency guidelines
 - Mandating transparency about limitations and uncertainties
 - Enforcing actionability tied to evidence strength
 - Promoting deep reasoning with alternative explanations
 
-This framework allows researchers to empirically test whether such protocols improve answer quality across diverse domains (cognitive science, machine learning, HCI, health tech, policy).
+This framework tests SGP enforcement across three experimental conditions:
+
+| Condition | How SGP is enforced | Key question |
+|-----------|--------------------|-|
+| **A — without-protocol** | Not at all | Baseline quality |
+| **B — with-protocol** | In-context prompt text (`SGP_compact.md`) | Does prompting help? |
+| **C — with-guardrails** | Programmatically via NeMo Guardrails | Does architecture help? |
+
+Comparing B and C isolates the effect of *where* enforcement happens — in the prompt versus in the inference pipeline — across diverse domains (cognitive science, machine learning, HCI, health tech, EU policy).
 
 ## Citation
 
@@ -266,5 +304,5 @@ For questions, issues, or collaboration inquiries, please open an issue on GitHu
 
 ---
 
-**Version:** 1.0.0
-**Last Updated:** 2025-11-05
+**Version:** 1.1.0
+**Last Updated:** 2026-03-18
