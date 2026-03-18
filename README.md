@@ -5,6 +5,7 @@ A reproducible, open-source framework for testing how a **Scientific Grounding P
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![NeMo Guardrails](https://img.shields.io/badge/NeMo%20Guardrails-%E2%89%A50.9.0-76b900.svg)](https://github.com/NVIDIA-NeMo/Guardrails)
 [![Status: In Development](https://img.shields.io/badge/status-in%20development-orange.svg)]()
 
 > **Note:** This project is actively under development. Features and documentation may change.
@@ -63,9 +64,10 @@ ai-grounding-lab/
 
 ### Prerequisites
 
-- Python 3.8 or higher
+- Python 3.10 or higher (required by NeMo Guardrails)
 - [LM Studio](https://lmstudio.ai/) (for local model inference) or any OpenAI-compatible API
 - API key for evaluation model (OpenAI GPT-4, Anthropic Claude, etc.)
+- C++ compiler (required by NeMo Guardrails' `annoy` dependency — usually pre-installed on Linux/macOS)
 
 ### Setup
 
@@ -191,6 +193,55 @@ python3 src/eval_scores.py \
   --eval-model gpt-4o-mini
 ```
 
+## Guardrails Layer — Condition C
+
+Condition C uses [NVIDIA NeMo Guardrails](https://github.com/NVIDIA-NeMo/Guardrails) to enforce SGP constraints programmatically at runtime. The same plain question is sent to the model — no SGP text in the prompt — and compliance is enforced by the rail layer.
+
+### Rails
+
+**Input rail — Domain Boundary Enforcement**
+
+Validates that each question falls within the five SGP domains: cognitive science, ML factuality, HCI, health tech, and EU policy. Questions outside these domains are rejected with a structured refusal before reaching the model. None of the five canonical lab questions trigger this rail — it acts as a safety boundary for open-ended use.
+
+**Output rail — SGP Compliance**
+
+Validates generated responses against three sub-checks, all of which must pass:
+
+- **Evidence** — response contains at least one research marker (e.g. `study`, `findings`, `et al`, `doi:`, `peer-reviewed`)
+- **Uncertainty** — response contains at least one hedging or limitation marker (e.g. `limitation`, `may`, `however`, `context-dependent`)
+- **Transparency** — response does not match any absolute-claim pattern (e.g. `always`, `definitively proves`, `proven fact`)
+
+When an output rail fires, the response is halted and a `[SGP_RAIL_TRIGGERED]` sentinel is recorded in the `guardrails_trace` field of the output JSONL.
+
+### Design Decisions
+
+**Deterministic actions, not LLM self-check.** The rails use keyword and regex matching rather than a secondary safety model. This ensures full reproducibility across experimental runs — LLM-based evaluation would introduce variability that confounds the scoring comparison across conditions.
+
+**No NVIDIA API key required.** Models are served locally via LM Studio. No NVIDIA cloud authentication is involved.
+
+**No downstream modifications.** The output schema is identical to `run_lm_studio.py` with one additional `guardrails_trace` field, so `eval_scores.py` and `aggregate.py` work unchanged.
+
+### Output Schema
+
+Identical to `run_lm_studio.py` with one additional field:
+
+```json
+{
+  "run_id": "...",
+  "qid": "Q1",
+  "condition": "with-guardrails",
+  "model": { "name": "llama-3.1-8b", "source": "LMStudio_NeMo" },
+  "gen_params": { "temperature": 0.2, "max_tokens": 1024, "seed": 42 },
+  "prompt": { "wrapper": "NeMo_SGP", "full_prompt_text": "..." },
+  "response": { "text": "...", "tokens_out": null, "latency_ms": 1234 },
+  "guardrails_trace": {
+    "input_rail_triggered": false,
+    "output_rail_triggered": false,
+    "rail_violated": null
+  }
+}
+```
+
 ## Human Validation Workflow
 
 Human evaluation validates AI scores and provides an inter-rater reliability check. See [`docs/HUMAN_EVALUATION_GUIDE.md`](docs/HUMAN_EVALUATION_GUIDE.md) for full details.
@@ -237,6 +288,11 @@ See `docs/human_rubrics/` for detailed scoring criteria per dimension.
 - `--temperature`: Sampling temperature (default: 0.2)
 - `--max-tokens`: Maximum response length (default: 1024)
 - `--seed`: Random seed for reproducibility (default: 42)
+
+### Guardrails Runner
+- `--guardrails-config`: Path to guardrails config directory (default: `guardrails/`)
+- `--base-url`: LM Studio API endpoint (default: `http://localhost:1234/v1`)
+- `--temperature`, `--max-tokens`, `--seed`: same as LM Studio runner
 
 ### Evaluator
 - `--eval-endpoint`: Evaluator API endpoint
@@ -294,6 +350,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - Protocol design inspired by evidence-based medicine and scientific communication best practices
 - Evaluation framework adapted from automated fact-checking and AI alignment research
+- Guardrails layer built with [NVIDIA NeMo Guardrails](https://github.com/NVIDIA-NeMo/Guardrails)
 
 ## Contact
 
