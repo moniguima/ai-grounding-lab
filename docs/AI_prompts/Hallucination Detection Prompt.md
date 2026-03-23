@@ -126,7 +126,7 @@ Using this rubric:
 - **1** = 3+ hallucinations
 - **0** = Majority of factual content fabricated
 
-**FACTUAL ACCURACY SCORE: [0-5]**
+**Score: [0-5]**
 
 **JUSTIFICATION:** [2-3 sentence explanation of score]
 
@@ -165,21 +165,14 @@ Using this rubric:
    - For each hallucination, quote the exact text
    - Explain why you consider it fabricated/false
 
-## READY TO BEGIN?
+## READY TO EVALUATE?
 
-I will now provide you with with the question and two AI responses to evaluate (one without and another with the scientific grounding protocol). Please analyze each one separately using the protocol above.
+I will now provide you with an AI-generated response to evaluate for hallucinations and factual accuracy.
+
+**RESPONSE TO EVALUATE:**
+
+[Paste response here]
 
 ---
 
-<QUESTION>
-[Insert research question]
-</QUESTION>
-
-<RESPONSE Without Scientific Grounding>
-[Insert answer without protocol]
-</RESPONSE Without Scientific Grounding>
-
-<RESPONSE With Scientific Grounding>
-[Insert answer with protocol]
-</RESPONSE With Scientific Grounding>
-Please evaluate both responses and provide detailed hallucination analysis for each.
+Please provide your detailed hallucination analysis following the output format above.

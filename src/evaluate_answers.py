@@ -13,10 +13,21 @@ import argparse
 import json
 import os
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-import requests
+from typing import Dict, List, Optional
+
+sys.path.insert(0, str(Path(__file__).parent))
+from configuration import (
+    DEFAULT_MODEL,
+    _load_environment_variables,
+    _configure_langsmith_tracing,
+    _check_langsmith_status,
+    _get_openai_api_key,
+)
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage
 
 
 class PromptLoader:
@@ -80,6 +91,49 @@ class PromptLoader:
         for criterion in self.CRITERION_FILES.keys():
             prompts[criterion] = self.load_prompt(criterion)
         return prompts
+
+
+class JsonlAnswerParser:
+    """
+    Parses answers from a JSONL file (data/answers.jsonl).
+
+    Follows Single Responsibility Principle: only handles JSONL answer loading.
+    """
+
+    def __init__(self, answers_file: Path):
+        """
+        Initialize with path to answers JSONL file.
+
+        Args:
+            answers_file: Path to the answers.jsonl file.
+        """
+        self.answers_file = answers_file
+
+    def parse_answers(self) -> List[Dict[str, str]]:
+        """
+        Parse all question-answer pairs from the JSONL file.
+
+        Returns:
+            List of dictionaries containing:
+                - question_id: e.g., "Q1"
+                - question_text: The question
+                - answer_without_protocol: Answer text
+                - answer_with_protocol: Answer text
+        """
+        answers = []
+        with open(self.answers_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                record = json.loads(line)
+                answers.append({
+                    "question_id": record.get("question_id", ""),
+                    "question_text": record.get("question", ""),
+                    "answer_without_protocol": record.get("answer_without_protocol", ""),
+                    "answer_with_protocol": record.get("answer_with_protocol", ""),
+                })
+        return answers
 
 
 class AnswerParser:
@@ -219,7 +273,9 @@ class EvaluationComposer:
 
 class APIClient:
     """
-    Handles API calls to the AI evaluator service.
+    Handles API calls to the AI evaluator service via LangChain ChatOpenAI.
+
+    Using ChatOpenAI enables automatic LangSmith tracing of all evaluator calls.
 
     Follows Single Responsibility Principle: only handles API communication.
     Follows Dependency Inversion: depends on abstract API interface.
@@ -227,7 +283,6 @@ class APIClient:
 
     def __init__(
         self,
-        endpoint: str,
         api_key: str,
         model: str,
         temperature: float = 0.0,
@@ -237,53 +292,31 @@ class APIClient:
         Initialize API client.
 
         Args:
-            endpoint: API endpoint URL.
-            api_key: API authentication key.
+            api_key: OpenAI API authentication key.
             model: Model name to use.
             temperature: Sampling temperature.
             max_tokens: Maximum tokens in response.
         """
-        self.endpoint = endpoint
-        self.api_key = api_key
         self.model = model
-        self.temperature = temperature
-        self.max_tokens = max_tokens
+        self._llm = ChatOpenAI(
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            api_key=api_key,
+        )
 
     def call_evaluator(self, prompt: str) -> str:
         """
-        Call the AI evaluator API.
+        Call the AI evaluator via LangChain (traced automatically by LangSmith).
 
         Args:
             prompt: The evaluation request prompt.
 
         Returns:
             The evaluator's response text.
-
-        Raises:
-            requests.RequestException: If the API call fails.
         """
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-
-        payload = {
-            "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": self.temperature,
-            "max_tokens": self.max_tokens
-        }
-
-        response = requests.post(
-            self.endpoint,
-            headers=headers,
-            json=payload,
-            timeout=600
-        )
-        response.raise_for_status()
-
-        data = response.json()
-        return data["choices"][0]["message"]["content"]
+        response = self._llm.invoke([HumanMessage(content=prompt)])
+        return response.content
 
 
 class ResultWriter:
@@ -394,15 +427,21 @@ def main() -> None:
         description="Automate AI evaluation of answers using criterion-specific prompts"
     )
     parser.add_argument(
+        "--answers-file",
+        type=Path,
+        default=Path("data/answers.jsonl"),
+        help="Path to answers JSONL file (default: data/answers.jsonl)"
+    )
+    parser.add_argument(
         "--qa-file",
         type=Path,
-        default=Path("docs/questions_and_answers.md"),
-        help="Path to questions and answers file"
+        default=None,
+        help="Path to questions and answers markdown file (legacy; overrides --answers-file)"
     )
     parser.add_argument(
         "--prompts-dir",
         type=Path,
-        default=Path("docs/prompts"),
+        default=Path("docs/AI_prompts"),
         help="Directory containing evaluation prompts"
     )
     parser.add_argument(
@@ -420,22 +459,10 @@ def main() -> None:
         help="Which criterion to evaluate (default: all)"
     )
     parser.add_argument(
-        "--evaluator-endpoint",
-        type=str,
-        required=True,
-        help="API endpoint for evaluator (e.g., https://api.openai.com/v1/chat/completions)"
-    )
-    parser.add_argument(
         "--evaluator-model",
         type=str,
-        required=True,
-        help="Model to use for evaluation (e.g., claude-3-5-sonnet, gpt-4)"
-    )
-    parser.add_argument(
-        "--api-key",
-        type=str,
-        default=os.getenv("EVALUATOR_API_KEY"),
-        help="API key for evaluator (or set EVALUATOR_API_KEY env var)"
+        default=DEFAULT_MODEL,
+        help=f"Model to use for evaluation (default: {DEFAULT_MODEL})"
     )
     parser.add_argument(
         "--condition",
@@ -444,29 +471,51 @@ def main() -> None:
         default="both",
         help="Which condition to evaluate (default: both)"
     )
+    parser.add_argument(
+        "--question-id",
+        type=str,
+        default=None,
+        help="Evaluate only this question ID (e.g., Q1). Omit to evaluate all."
+    )
 
     args = parser.parse_args()
 
-    if not args.api_key:
-        print("Error: API key required. Set --api-key or EVALUATOR_API_KEY environment variable.")
+    # Environment setup: loads .env, configures LangSmith tracing, validates API key
+    _load_environment_variables()
+    _configure_langsmith_tracing()
+    _check_langsmith_status()
+    try:
+        api_key = _get_openai_api_key()
+    except ValueError as e:
+        print(f"Error: {e}")
         exit(1)
 
     # Initialize components
     prompt_loader = PromptLoader(args.prompts_dir)
-    answer_parser = AnswerParser(args.qa_file)
     composer = EvaluationComposer()
     api_client = APIClient(
-        endpoint=args.evaluator_endpoint,
-        api_key=args.api_key,
-        model=args.evaluator_model
+        api_key=api_key,
+        model=args.evaluator_model,
     )
     result_writer = ResultWriter(args.output_dir)
     score_extractor = ScoreExtractor()
 
-    # Load answers
-    print(f"Loading answers from {args.qa_file}...")
-    answers = answer_parser.parse_answers()
+    # Load answers — JSONL by default, markdown if --qa-file is given
+    if args.qa_file is not None:
+        print(f"Loading answers from {args.qa_file}...")
+        answers = AnswerParser(args.qa_file).parse_answers()
+    else:
+        print(f"Loading answers from {args.answers_file}...")
+        answers = JsonlAnswerParser(args.answers_file).parse_answers()
     print(f"Found {len(answers)} question-answer pairs")
+
+    # Filter by question ID if specified
+    if args.question_id is not None:
+        answers = [a for a in answers if a["question_id"] == args.question_id]
+        if not answers:
+            print(f"Error: No answer found for question ID '{args.question_id}'")
+            exit(1)
+        print(f"Filtered to question: {args.question_id}")
 
     # Determine which criteria to evaluate
     criteria = (
