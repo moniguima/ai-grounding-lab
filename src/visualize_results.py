@@ -31,6 +31,14 @@ CRITERIA_LABELS = {
     "uncertainty_disclosure": "Uncertainty Disclosure",
 }
 
+CRITERIA_DESCRIPTIONS = {
+    "evidence_quality": "Scores how well responses support claims with credible, peer-reviewed, and verifiable sources.",
+    "transparency": "Scores how clearly a response discloses its limitations, boundary conditions, and applicability constraints.",
+    "reasoning_depth": "Scores how deeply a response explains why and how through causal mechanisms, theoretical frameworks, and logical chains.",
+    "actionability": "Scores how effectively a response translates findings into specific, practical, and implementable recommendations.",
+    "uncertainty_disclosure": "Scores how well a response avoids hallucinations — fabricated citations, factual errors, and unverifiable claims stated as fact.",
+}
+
 CONDITIONS = ["without-protocol", "with-protocol"]
 CONDITION_LABELS = {
     "without-protocol": "Without Protocol",
@@ -45,6 +53,38 @@ CONDITION_COLORS = {
 # ============================================================================
 # DATA LOADING
 # ============================================================================
+
+class QuestionsLoader:
+    """
+    Loads questions from a JSONL file.
+
+    Follows Single Responsibility Principle: only handles question data loading.
+    """
+
+    def __init__(self, questions_path: Path):
+        """
+        Args:
+            questions_path: Path to the questions JSONL file.
+        """
+        self.questions_path = questions_path
+
+    def load(self) -> List[Dict]:
+        """
+        Load all question records from the JSONL file.
+
+        Returns:
+            List of question dicts with keys: qid, domain, prompt.
+        """
+        questions = []
+        if not self.questions_path.exists():
+            return questions
+        with open(self.questions_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    questions.append(json.loads(line))
+        return questions
+
 
 class EvaluationLoader:
     """
@@ -150,6 +190,78 @@ class ScoreAggregator:
 
 
 # ============================================================================
+# STATIC HTML SECTION BUILDERS
+# ============================================================================
+
+class MetricsDescriptionBuilder:
+    """
+    Builds a static HTML section describing each evaluation metric.
+
+    Follows Single Responsibility Principle: only handles metrics description rendering.
+    """
+
+    @staticmethod
+    def build() -> str:
+        """
+        Returns:
+            HTML string with a styled list of metric names and one-sentence descriptions.
+        """
+        items = "".join(
+            f'<li><strong>{CRITERIA_LABELS[key]}</strong> — {desc}</li>'
+            for key, desc in CRITERIA_DESCRIPTIONS.items()
+        )
+        return f"""
+<h2 style="font-size:1.1rem;font-weight:700;margin-bottom:0.75rem;color:#1a1a2e;">
+  Evaluation Metrics
+</h2>
+<ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:0.5rem;">
+  {items}
+</ul>"""
+
+
+class QuestionsTableBuilder:
+    """
+    Builds a static HTML table displaying the evaluated questions.
+
+    Follows Single Responsibility Principle: only handles questions table rendering.
+    """
+
+    @staticmethod
+    def build(questions: List[Dict]) -> str:
+        """
+        Args:
+            questions: List of question dicts with keys qid, domain, prompt.
+
+        Returns:
+            HTML string with a styled table of questions.
+        """
+        rows = "".join(
+            f"""<tr>
+              <td style="padding:0.5rem 0.75rem;font-weight:600;white-space:nowrap;">{q.get("qid","")}</td>
+              <td style="padding:0.5rem 0.75rem;white-space:nowrap;color:#555;">{q.get("domain","")}</td>
+              <td style="padding:0.5rem 0.75rem;">{q.get("prompt","")}</td>
+            </tr>"""
+            for q in questions
+        )
+        return f"""
+<h2 style="font-size:1.1rem;font-weight:700;margin-bottom:0.75rem;color:#1a1a2e;">
+  Evaluated Questions
+</h2>
+<table style="width:100%;border-collapse:collapse;font-size:0.92rem;">
+  <thead>
+    <tr style="background:#f0f2f8;">
+      <th style="padding:0.5rem 0.75rem;text-align:left;font-weight:600;">ID</th>
+      <th style="padding:0.5rem 0.75rem;text-align:left;font-weight:600;">Domain</th>
+      <th style="padding:0.5rem 0.75rem;text-align:left;font-weight:600;">Question</th>
+    </tr>
+  </thead>
+  <tbody>
+    {rows}
+  </tbody>
+</table>"""
+
+
+# ============================================================================
 # CHART BUILDERS
 # ============================================================================
 
@@ -175,7 +287,7 @@ class RadarChartBuilder:
         theta = criteria_display + [criteria_display[0]]
 
         fig = go.Figure()
-        for condition in CONDITIONS:
+        for condition in reversed(CONDITIONS):
             values = [averages[condition][k] for k in criteria_keys]
             values_closed = values + [values[0]]
             fig.add_trace(go.Scatterpolar(
@@ -314,6 +426,115 @@ class GainChartBuilder:
         return fig
 
 
+class BoxPlotBuilder:
+    """
+    Builds a grouped box plot showing score distribution per metric and condition.
+
+    Follows Single Responsibility Principle: only handles box plot creation.
+    """
+
+    @staticmethod
+    def build(records: List[Dict]) -> go.Figure:
+        """
+        Args:
+            records: List of evaluation record dicts.
+
+        Returns:
+            Plotly Figure with grouped box plot traces.
+        """
+        criteria_keys = list(CRITERIA_LABELS.keys())
+        criteria_display = [CRITERIA_LABELS[k] for k in criteria_keys]
+
+        fig = go.Figure()
+        for condition in CONDITIONS:
+            x_vals: List[str] = []
+            y_vals: List[float] = []
+            for key, label in zip(criteria_keys, criteria_display):
+                scores = [
+                    r["score"] for r in records
+                    if r.get("condition") == condition and r.get("criterion") == key
+                ]
+                x_vals.extend([label] * len(scores))
+                y_vals.extend(scores)
+
+            fig.add_trace(go.Box(
+                x=x_vals,
+                y=y_vals,
+                name=CONDITION_LABELS[condition],
+                marker_color=CONDITION_COLORS[condition],
+                boxmean=True,
+                hovertemplate="<b>%{x}</b><br>Score: %{y}<extra>"
+                              + CONDITION_LABELS[condition] + "</extra>",
+            ))
+
+        fig.update_layout(
+            title=dict(text="Score Distribution per Metric", font_size=16, x=0.5),
+            boxmode="group",
+            yaxis=dict(title="Score", range=[0, 5.5], tickvals=[0, 1, 2, 3, 4, 5]),
+            xaxis=dict(tickangle=-20, tickfont_size=11),
+            legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
+            margin=dict(t=60, b=90, l=60, r=40),
+        )
+        return fig
+
+
+class QuestionGainChartBuilder:
+    """
+    Builds a horizontal bar chart showing average protocol gain per question.
+
+    Follows Single Responsibility Principle: only handles question gain chart creation.
+    """
+
+    @staticmethod
+    def build(matrix: Dict[str, Dict[str, Dict[str, float]]]) -> go.Figure:
+        """
+        Args:
+            matrix: {condition: {question_id: {criterion: score}}}
+
+        Returns:
+            Plotly Figure with horizontal bar chart (one bar per question).
+        """
+        question_ids = sorted(set(
+            qid
+            for condition in CONDITIONS
+            for qid in matrix[condition].keys()
+        ))
+
+        gains = []
+        for qid in question_ids:
+            with_scores = list(matrix["with-protocol"].get(qid, {}).values())
+            without_scores = list(matrix["without-protocol"].get(qid, {}).values())
+            with_avg = sum(with_scores) / len(with_scores) if with_scores else 0.0
+            without_avg = sum(without_scores) / len(without_scores) if without_scores else 0.0
+            gains.append(with_avg - without_avg)
+
+        bar_colors = ["#2ecc71" if g >= 0 else "#e74c3c" for g in gains]
+
+        fig = go.Figure(go.Bar(
+            x=gains,
+            y=question_ids,
+            orientation="h",
+            marker_color=bar_colors,
+            text=[f"+{g:.2f}" if g >= 0 else f"{g:.2f}" for g in gains],
+            textposition="outside",
+            hovertemplate="<b>%{y}</b><br>Avg Gain: %{x:.2f}<extra></extra>",
+        ))
+
+        fig.add_vline(x=0, line_width=1.5, line_color="grey")
+
+        fig.update_layout(
+            title=dict(
+                text="Average Score Gain per Question",
+                font_size=16, x=0.5,
+            ),
+            xaxis=dict(title="Score Gain (avg across all metrics)", range=[-1, 5.5]),
+            yaxis=dict(autorange="reversed"),
+            margin=dict(t=60, b=60, l=60, r=80),
+            showlegend=False,
+        )
+        return fig
+
+
 # ============================================================================
 # DASHBOARD ASSEMBLER
 # ============================================================================
@@ -330,20 +551,36 @@ class DashboardAssembler:
         radar: go.Figure,
         heatmap: go.Figure,
         gain: go.Figure,
+        boxplot: go.Figure,
+        question_gain: go.Figure,
+        metrics_html: str,
+        questions_html: str,
         output_path: Path,
     ) -> None:
         """
-        Write a single HTML file containing all three charts.
+        Write a single HTML file containing all charts and informational sections.
+
+        Layout:
+          Row 1 (full): Metrics descriptions
+          Row 2 (2-col): Radar chart | Gain chart
+          Row 3 (2-col): Questions table | Score distribution box plot
+          Row 4 (2fr+1fr): Heatmap | Question gain chart
 
         Args:
             radar: Radar chart figure.
             heatmap: Heatmap figure.
             gain: Gain bar chart figure.
+            boxplot: Score distribution box plot figure.
+            question_gain: Per-question gain bar chart figure.
+            metrics_html: Rendered HTML for the metrics descriptions section.
+            questions_html: Rendered HTML for the questions table section.
             output_path: Path to write the HTML file.
         """
         radar_html = radar.to_html(full_html=False, include_plotlyjs="cdn")
         heatmap_html = heatmap.to_html(full_html=False, include_plotlyjs=False)
         gain_html = gain.to_html(full_html=False, include_plotlyjs=False)
+        boxplot_html = boxplot.to_html(full_html=False, include_plotlyjs=False)
+        question_gain_html = question_gain.to_html(full_html=False, include_plotlyjs=False)
 
         html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -379,6 +616,12 @@ class DashboardAssembler:
       gap: 1.5rem;
       margin-bottom: 1.5rem;
     }}
+    .grid-heatmap {{
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+    }}
     .card {{
       background: #ffffff;
       border-radius: 12px;
@@ -393,6 +636,8 @@ class DashboardAssembler:
       margin-bottom: 1.5rem;
     }}
     .plotly-graph-div {{ width: 100% !important; }}
+    table tbody tr:nth-child(even) {{ background: #f8f9fc; }}
+    table tbody tr:hover {{ background: #eef0f8; }}
   </style>
 </head>
 <body>
@@ -401,12 +646,22 @@ class DashboardAssembler:
     <p>Scientific Grounding Protocol &nbsp;|&nbsp; AI Rubric Scores (0–5) &nbsp;|&nbsp; Evaluator: gpt-4o-mini</p>
   </header>
 
+  <div class="card-full">{metrics_html}</div>
+
   <div class="grid-2">
     <div class="card">{radar_html}</div>
     <div class="card">{gain_html}</div>
   </div>
 
-  <div class="card-full">{heatmap_html}</div>
+  <div class="grid-2">
+    <div class="card">{questions_html}</div>
+    <div class="card">{boxplot_html}</div>
+  </div>
+
+  <div class="grid-heatmap">
+    <div class="card">{heatmap_html}</div>
+    <div class="card">{question_gain_html}</div>
+  </div>
 
 </body>
 </html>"""
@@ -422,11 +677,16 @@ class DashboardAssembler:
 def main() -> None:
     """Load data, build charts, and write the dashboard HTML."""
     evaluations_dir = Path("evaluations/ai")
+    questions_path = Path("data/questions.jsonl")
     output_path = Path("evaluations/results_dashboard.html")
 
     print("Loading evaluation records...")
     records = EvaluationLoader(evaluations_dir).load()
     print(f"  {len(records)} valid records loaded")
+
+    print("Loading questions...")
+    questions = QuestionsLoader(questions_path).load()
+    print(f"  {len(questions)} questions loaded")
 
     aggregator = ScoreAggregator(records)
     averages = aggregator.average_by_condition_criterion()
@@ -436,9 +696,18 @@ def main() -> None:
     radar = RadarChartBuilder.build(averages)
     heatmap = HeatmapBuilder.build(matrix)
     gain = GainChartBuilder.build(averages)
+    boxplot = BoxPlotBuilder.build(records)
+    question_gain = QuestionGainChartBuilder.build(matrix)
+
+    print("Building info sections...")
+    metrics_html = MetricsDescriptionBuilder.build()
+    questions_html = QuestionsTableBuilder.build(questions)
 
     print(f"Writing dashboard to {output_path}...")
-    DashboardAssembler.assemble(radar, heatmap, gain, output_path)
+    DashboardAssembler.assemble(
+        radar, heatmap, gain, boxplot, question_gain,
+        metrics_html, questions_html, output_path,
+    )
     print(f"Done. Open: {output_path.resolve()}")
 
 
